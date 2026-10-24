@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Pronostics buts du week-end</title>
+<style>
+:root{--bg:#f4f6f8;--card:#fff;--text:#16202a;--muted:#667585;--accent:#16a34a;--border:#e1e6eb;--chip:#e8edf2;--h:#2563eb;--d:#94a3b8;--a:#f59e0b}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1720;--card:#18222e;--text:#eaf0f6;--muted:#93a3b3;--accent:#4ade80;--border:#2a3745;--chip:#223040}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;line-height:1.4;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+main{max-width:640px;margin:0 auto;padding:16px 14px 40px}
+h1{font-size:1.4rem;margin:8px 0 2px}
+.sub{color:var(--muted);font-size:.9rem;margin:0 0 12px}
+.chips{display:flex;gap:6px;overflow-x:auto;padding:4px 0 10px}
+.chip{flex:0 0 auto;border:0;background:var(--chip);color:var(--text);padding:7px 13px;border-radius:999px;font-size:.88rem;cursor:pointer}
+.chip.on{background:var(--accent);color:#06210f;font-weight:600}
+h2{font-size:.95rem;color:var(--muted);text-transform:capitalize;margin:18px 0 8px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:12px 14px;margin-bottom:10px}
+.meta{display:flex;justify-content:space-between;color:var(--muted);font-size:.8rem}
+.teams{font-weight:650;font-size:1.02rem;margin:6px 0 8px}
+.pills{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px}
+.pill{background:var(--chip);border-radius:8px;padding:4px 9px;font-size:.82rem}
+.pill b{font-weight:700}
+.bar{display:flex;height:8px;border-radius:5px;overflow:hidden;margin-bottom:4px}
+.bar span:nth-child(1){background:var(--h)}.bar span:nth-child(2){background:var(--d)}.bar span:nth-child(3){background:var(--a)}
+.legend{display:flex;justify-content:space-between;font-size:.76rem;color:var(--muted)}
+.note{color:var(--muted);font-size:.8rem;text-align:center;margin-top:20px}
+.empty{text-align:center;color:var(--muted);padding:30px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>Pronostics buts du week-end</h1>
+  <p class="sub" id="upd">Chargement…</p>
+  <div class="chips" id="chips"></div>
+  <div id="list"></div>
+  <p class="note">Estimations statistiques (modèle de Poisson) : elles ne garantissent rien. Si vous pariez, ne misez jamais d’argent dont vous avez besoin.</p>
+</main>
+<script>
+var data=[],filter='ALL';
+var $=function(i){return document.getElementById(i)};
+function el(tag,cls,txt){var e=document.createElement(tag);if(cls)e.className=cls;if(txt!=null)e.textContent=txt;return e}
+function pc(x){return Math.round(x*100)+' %'}
+function fr(x){return String(x).replace('.',',')}
+
+function chips(){
+  var box=$('chips');box.innerHTML='';
+  var comps=[['ALL','Tous']];
+  data.forEach(function(m){if(!comps.some(function(c){return c[0]===m.competition}))comps.push([m.competition,m.competition_name])});
+  comps.forEach(function(c){
+    var b=el('button','chip'+(filter===c[0]?' on':''),c[1]);
+    b.onclick=function(){filter=c[0];chips();render()};
+    box.appendChild(b);
+  });
+}
+
+function render(){
+  var list=$('list');list.innerHTML='';
+  var rows=data.filter(function(m){return filter==='ALL'||m.competition===filter});
+  if(!rows.length){list.appendChild(el('p','empty','Aucun match à afficher pour le moment.'));return}
+  var lastDay='';
+  rows.forEach(function(m){
+    var d=new Date(m.utc_date);
+    var day=d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'});
+    if(day!==lastDay){list.appendChild(el('h2',null,day));lastDay=day}
+    var c=el('div','card');
+    var meta=el('div','meta');
+    meta.appendChild(el('span',null,m.competition_name));
+    meta.appendChild(el('span',null,d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})));
+    c.appendChild(meta);
+    c.appendChild(el('div','teams',m.home+' – '+m.away));
+    var pills=el('div','pills');
+    var tot=Math.round((Number(m.xg_home)+Number(m.xg_away))*10)/10;
+    [['Buts attendus',fr(tot)],['+2,5 buts',pc(m.p_over25)],['Les 2 marquent',pc(m.p_btts)],['Score probable',m.score]].forEach(function(p){
+      var s=el('span','pill',p[0]+' ');s.appendChild(el('b',null,p[1]));pills.appendChild(s);
+    });
+    c.appendChild(pills);
+    var bar=el('div','bar');
+    [m.p_home,m.p_draw,m.p_away].forEach(function(p){var s=document.createElement('span');s.style.width=(p*100)+'%';bar.appendChild(s)});
+    c.appendChild(bar);
+    var lg=el('div','legend');
+    lg.appendChild(el('span',null,'Victoire dom. '+pc(m.p_home)));
+    lg.appendChild(el('span',null,'Nul '+pc(m.p_draw)));
+    lg.appendChild(el('span',null,'Ext. '+pc(m.p_away)));
+    c.appendChild(lg);
+    c.appendChild(el('div','legend','Données disponibles : '+m.confidence));
+    list.appendChild(c);
+  });
+}
+
+fetch('/api/predictions').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){
+  data=rows;
+  if(rows.length){
+    var u=rows.map(function(m){return m.updated_at}).sort().pop();
+    $('upd').textContent='Mis à jour le '+new Date(u).toLocaleString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'});
+  }else{$('upd').textContent='Aucun pronostic pour l’instant.'}
+  chips();render();
+}).catch(function(){$('upd').textContent='Impossible de charger les pronostics.'});
+</script>
+</body>
+</html>
