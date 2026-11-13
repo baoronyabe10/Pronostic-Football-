@@ -19,7 +19,7 @@ h2{font-size:.95rem;color:var(--muted);text-transform:capitalize;margin:18px 0 8
 .tabs{display:flex;gap:6px;margin-bottom:10px}
 .tab{flex:1;border:1px solid var(--border);background:var(--card);color:var(--text);padding:9px;border-radius:10px;font-size:.95rem;cursor:pointer}
 .tab.on{background:var(--accent);color:#06210f;font-weight:700;border-color:var(--accent)}
-input[type=search]{width:100%;font:inherit;font-size:16px;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
+input[type=search],input[type=text]{width:100%;font:inherit;font-size:16px;color:var(--text);background:var(--card);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .chips{display:flex;gap:6px;overflow-x:auto;padding:2px 0 8px}
 .chip{flex:0 0 auto;border:0;background:var(--chip);color:var(--text);padding:7px 13px;border-radius:999px;font-size:.88rem;cursor:pointer}
 .chip.on{background:var(--accent);color:#06210f;font-weight:600}
@@ -58,6 +58,13 @@ input[type=search]{width:100%;font:inherit;font-size:16px;color:var(--text);back
 .res{display:flex;justify-content:space-between;font-size:.88rem;padding:7px 0;border-top:1px solid var(--border)}
 .ok{color:var(--ok)}.ko{color:var(--ko)}
 #install{display:none;margin:0 0 10px;width:100%}
+.lock{position:fixed;inset:0;background:var(--bg);z-index:60;display:none;align-items:center;justify-content:center;padding:20px}
+.lock.show{display:flex}.lbox{width:100%;max-width:380px;background:var(--card);border:1px solid var(--border);border-radius:18px;padding:20px}
+.mrow{display:grid;grid-template-columns:46px 1fr auto;gap:8px;align-items:center;padding:10px 0;border-top:1px solid var(--border);cursor:pointer}
+.mlist{background:var(--card);border:1px solid var(--border);border-radius:14px;padding:2px 14px}
+.mlist .mrow:first-child{border-top:0}
+.mh{color:var(--muted);font-size:.85rem}.mt{font-weight:600;font-size:.95rem}.mc{display:block;color:var(--muted);font-size:.74rem;font-weight:400}
+.ms{font-weight:800;font-size:1.05rem;text-align:right;min-width:48px}.mp{font-size:.76rem;color:var(--muted);text-align:right;font-weight:400;display:block}
 </style>
 </head>
 <body>
@@ -67,6 +74,7 @@ input[type=search]{width:100%;font:inherit;font-size:16px;color:var(--text);back
   <button class="chip on" id="install">Installer l’application sur l’écran d’accueil</button>
   <div class="tabs">
     <button class="tab on" id="t-pron">Pronostics</button>
+    <button class="tab" id="t-match">Matchs</button>
     <button class="tab" id="t-bilan">Bilan</button>
   </div>
   <input type="search" id="q" placeholder="Rechercher une équipe (PSG, Arsenal…)">
@@ -76,6 +84,13 @@ input[type=search]{width:100%;font:inherit;font-size:16px;color:var(--text);back
 
 <div class="sheet" id="sheet"><div class="panel" id="panel"></div></div>
 
+<div class="lock" id="lock"><div class="lbox">
+  <h2 style="font-size:1.2rem;margin:0 0 6px;text-transform:none">🔒 Activer l’application</h2>
+  <p class="sub" id="lmsg">Entrez le code de licence que vous avez reçu.</p>
+  <input type="text" id="lcode" placeholder="XXXX-XXXX-XXXX" autocomplete="off" autocapitalize="characters" style="text-transform:uppercase;letter-spacing:1px;text-align:center;margin:6px 0 10px">
+  <button class="tab on" id="lgo" style="width:100%">Activer</button>
+  <p class="note" id="lerr" style="color:var(--ko);margin-top:10px"></p>
+</div></div>
 <script>
 var $=function(i){return document.getElementById(i)};
 function el(t,c,x){var e=document.createElement(t);if(c)e.className=c;if(x!=null)e.textContent=x;return e}
@@ -85,7 +100,18 @@ function norm(s){return String(s).toLowerCase().normalize('NFD').replace(/[\u030
 function dayLabel(d){return d.toLocaleDateString('fr-FR',{weekday:'long',day:'numeric',month:'long'})}
 function hour(d){return d.toLocaleTimeString('fr-FR',{hour:'2-digit',minute:'2-digit'})}
 
-var data=[],past=null,view='pron',filter='ALL',query='',pick='over';
+var locked=false;
+function devId(){var d=localStorage.getItem('lic_dev');if(!d){d=(window.crypto&&crypto.randomUUID?crypto.randomUUID():String(Date.now())+Math.random().toString(36).slice(2));localStorage.setItem('lic_dev',d)}return d}
+function lock(msg){locked=true;document.getElementById('lock').classList.add('show');if(msg&&msg!=='Licence requise.')document.getElementById('lerr').textContent=msg}
+function api(u){return fetch(u,{headers:{'x-license':localStorage.getItem('lic_code')||'','x-device':devId()}}).then(function(r){
+  if(r.status===401)return r.json().catch(function(){return{}}).then(function(j){lock(j.reason);throw 0});return r})}
+document.getElementById('lgo').onclick=function(){
+  var c=document.getElementById('lcode').value,e=document.getElementById('lerr');e.textContent='';
+  fetch('/api/activate',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({code:c,device:devId()})})
+    .then(function(r){return r.json().then(function(j){return[r.ok,j]})})
+    .then(function(a){if(a[0]&&a[1].ok){localStorage.setItem('lic_code',c);location.reload()}else e.textContent=a[1].reason||'Activation impossible.'})
+    .catch(function(){e.textContent='Connexion impossible. Réessayez.'})};
+var data=[],past=null,view='pron',filter='ALL',query='',pick='over',mmode='up',mfilter='ALL',loadingPast=false;
 
 /* ---------- Carte d'un match ---------- */
 function card(m){
@@ -170,6 +196,7 @@ function openDetail(m){
   [['Buts attendus',fr(m.xg_home)+' – '+fr(m.xg_away)],['+2,5 buts',pc(m.p_over25)],['Les 2 marquent',pc(m.p_btts)]].forEach(function(a){
     var s=el('span','pill',a[0]+' ');s.appendChild(el('b',null,a[1]));pills.appendChild(s)});
   p.appendChild(pills);
+  if(m.result_home!=null&&m.result_away!=null)p.appendChild(el('div','sub','Résultat final : '+m.result_home+' – '+m.result_away));
   p.appendChild(el('div','sec','Résultat (1N2)'));
   p.appendChild(bar(m));
   var lg=el('div','legend');
@@ -187,7 +214,7 @@ function openDetail(m){
   var sp=el('div');sp.style.height='10px';p.appendChild(sp);
   p.appendChild(formBlock(m.away,m.form_away));
   p.appendChild(el('div','sec','Fiabilité'));
-  p.appendChild(el('div','fline','Données disponibles : '+m.confidence));
+  p.appendChild(el('div','fline','Données disponibles : '+(m.confidence||'—')));
   $('sheet').classList.add('show');
 }
 function closeDetail(){$('sheet').classList.remove('show')}
@@ -227,28 +254,95 @@ function renderBilan(){
   root.appendChild(el('p','note','✓ = le pronostic « plus/moins de 2,5 buts » était juste.'));
 }
 
+/* ---------- Vue Matchs ---------- */
+var ms=null,msFail=false,msLoading=false;
+function loadPast(){
+  if(past!==null||loadingPast)return;loadingPast=true;
+  api('/api/predictions?past=1').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){past=rows}).catch(function(){past=[]}).then(function(){
+    loadingPast=false;if(view==='bilan')renderBilan();if(view==='match')renderMatch()});
+}
+function loadMatches(){
+  if(ms!==null||msFail||msLoading)return;msLoading=true;
+  api('/api/matches').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){if(!Array.isArray(rows)||!rows.length)throw 0;ms=rows}).catch(function(){msFail=true}).then(function(){
+    msLoading=false;if(view==='match')renderMatch()});
+}
+function conv(m){return {id:m.match_id,competition:m.competition,competition_name:m.competition_name,utc_date:m.utc_date,home:m.home,away:m.away,
+  status:m.result_home!=null?'FINISHED':'TIMED',score_home:m.result_home,score_away:m.result_away,pred:m}}
+function listMatches(){
+  var all=data.concat(past||[]),P={};all.forEach(function(m){P[m.match_id]=m});
+  if(ms)return ms.map(function(m){var o={};for(var k in m)o[k]=m[k];o.pred=P[m.id]||null;return o});
+  var seen={},out=[];all.forEach(function(m){if(!seen[m.match_id]){seen[m.match_id]=1;out.push(conv(m))}});return out;
+}
+function isLive(m){return m.status==='IN_PLAY'||m.status==='PAUSED'||m.status==='LIVE'}
+function openMini(m){
+  var p=$('panel');p.innerHTML='';
+  var x=el('button','close','×');x.onclick=closeDetail;p.appendChild(x);
+  p.appendChild(el('h3',null,m.home+' – '+m.away));
+  var d=new Date(m.utc_date);
+  p.appendChild(el('div','sub',(m.competition_name||'')+' · '+dayLabel(d)+' '+hour(d)));
+  if(m.score_home!=null)p.appendChild(el('div','sec','Score : '+m.score_home+' – '+m.score_away+(m.status==='FINISHED'?' (terminé)':isLive(m)?' (en cours)':'')));
+  p.appendChild(el('div','fline','Pas de pronostic pour ce match : ils sont calculés pour les 4 prochains jours.'));
+  $('sheet').classList.add('show');
+}
+function renderMatch(){
+  var root=$('view');root.innerHTML='';
+  var tabs=el('div','chips');
+  [['up','À venir'],['res','Résultats']].forEach(function(o){
+    var b=el('button','chip'+(mmode===o[0]?' on':''),o[1]);
+    b.onclick=function(){mmode=o[0];mfilter='ALL';renderMatch()};tabs.appendChild(b)});
+  root.appendChild(tabs);
+  if((ms===null&&!msFail)||past===null){root.appendChild(el('p','empty','Chargement…'));return}
+  var src=listMatches().filter(function(m){return mmode==='res'?m.status==='FINISHED':(m.status!=='FINISHED'&&m.status!=='CANCELLED')});
+  if(!src.length){root.appendChild(el('p','empty',mmode==='up'?'Aucun match à venir pour le moment.':'Aucun match terminé pour le moment.'));return}
+  var comps=[['ALL','Tous']];
+  src.forEach(function(m){if(!comps.some(function(c){return c[0]===m.competition}))comps.push([m.competition,m.competition_name||m.competition])});
+  var cb=el('div','chips');
+  comps.forEach(function(c){var b=el('button','chip'+(mfilter===c[0]?' on':''),c[1]);b.onclick=function(){mfilter=c[0];renderMatch()};cb.appendChild(b)});
+  root.appendChild(cb);
+  var q=norm(query.trim());
+  var rows=src.filter(function(m){return (mfilter==='ALL'||m.competition===mfilter)&&(!q||norm(m.home).indexOf(q)>-1||norm(m.away).indexOf(q)>-1)})
+    .sort(function(a,b){var d=new Date(a.utc_date)-new Date(b.utc_date);return mmode==='up'?d:-d});
+  if(!rows.length){root.appendChild(el('p','empty','Aucun match trouvé.'));return}
+  var last='',box=null;
+  rows.forEach(function(m){
+    var d=new Date(m.utc_date),day=dayLabel(d);
+    if(day!==last){root.appendChild(el('h2',null,day));box=el('div','mlist');root.appendChild(box);last=day}
+    var r=el('div','mrow');r.onclick=function(){if(m.pred)openDetail(m.pred);else openMini(m)};
+    r.appendChild(el('span','mh',hour(d)));
+    var t=el('span','mt',m.home+' – '+m.away);
+    if(mfilter==='ALL')t.appendChild(el('span','mc',m.competition_name||''));
+    r.appendChild(t);
+    var s=el('span','ms');
+    if(m.status==='FINISHED'&&m.score_home!=null)s.textContent=m.score_home+' - '+m.score_away;
+    else if(isLive(m)){s.textContent=(m.score_home!=null?m.score_home+' - '+m.score_away:'');var lv=el('span','mp','● en direct');lv.style.color='var(--ko)';s.appendChild(lv)}
+    else if(m.status==='POSTPONED'||m.status==='SUSPENDED')s.textContent='Reporté';
+    else if(m.pred)s.textContent='+2,5 '+pc(m.pred.p_over25);
+    r.appendChild(s);box.appendChild(r)});
+}
+
 /* ---------- Navigation ---------- */
 function show(v){
   view=v;
-  $('t-pron').classList.toggle('on',v==='pron');$('t-bilan').classList.toggle('on',v==='bilan');
-  $('q').style.display=v==='pron'?'':'none';
+  $('t-pron').classList.toggle('on',v==='pron');$('t-match').classList.toggle('on',v==='match');$('t-bilan').classList.toggle('on',v==='bilan');
+  $('q').style.display=(v==='pron'||v==='match')?'':'none';
   if(v==='pron')renderPron();
-  else{
-    renderBilan();
-    if(past===null)fetch('/api/predictions?past=1').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){past=rows;if(view==='bilan')renderBilan()}).catch(function(){past=[];renderBilan()});
-  }
+  else if(v==='match'){renderMatch();loadMatches();loadPast()}
+  else{renderBilan();loadPast()}
 }
 $('t-pron').onclick=function(){show('pron')};
+$('t-match').onclick=function(){show('match')};
 $('t-bilan').onclick=function(){show('bilan')};
-$('q').addEventListener('input',function(){query=this.value;renderPron()});
+$('q').addEventListener('input',function(){query=this.value;if(view==='match')renderMatch();else renderPron()});
 
-fetch('/api/predictions').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){
+api('/api/predictions').then(function(r){if(!r.ok)throw 0;return r.json()}).then(function(rows){
   data=rows;
   if(rows.length){var u=rows.map(function(m){return m.updated_at}).sort().pop();
     $('upd').textContent='Mis à jour le '+new Date(u).toLocaleString('fr-FR',{day:'numeric',month:'long',hour:'2-digit',minute:'2-digit'})}
   else $('upd').textContent='Aucun pronostic pour l’instant.';
   show('pron');
-}).catch(function(){$('upd').textContent='Impossible de charger les pronostics.'});
+  api('/api/license').then(function(r){return r.json()}).then(function(j){
+    if(j.valid){var t=$('upd');t.textContent+=' · Licence : '+j.days_left+' jour'+(j.days_left>1?'s':'')+' restant'+(j.days_left>1?'s':'');if(j.days_left<=3)t.style.color='var(--ko)'}}).catch(function(){});
+}).catch(function(){if(!locked)$('upd').textContent='Impossible de charger les pronostics.'});
 
 /* ---------- Installation (PWA) ---------- */
 var deferred=null;
