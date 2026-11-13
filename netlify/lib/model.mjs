@@ -1,13 +1,29 @@
 // Modèle de Poisson pondéré par la récence + forme + bilan des pronostics.
 
+// Les championnats sont répartis en 2 groupes de 5 : football-data.org (offre gratuite)
+// n'autorise que 10 demandes par minute, donc on lance un groupe puis l'autre quelques minutes après.
 export const COMPETITIONS = [
-  { code: 'PL', name: 'Premier League' },
-  { code: 'PD', name: 'Liga' },
-  { code: 'BL1', name: 'Bundesliga' },
-  { code: 'SA', name: 'Serie A' },
-  { code: 'FL1', name: 'Ligue 1' },
-  { code: 'CL', name: 'Ligue des champions' },
+  { code: 'PL', name: 'Premier League', group: 1 },
+  { code: 'PD', name: 'Liga', group: 1 },
+  { code: 'BL1', name: 'Bundesliga', group: 1 },
+  { code: 'SA', name: 'Serie A', group: 1 },
+  { code: 'FL1', name: 'Ligue 1', group: 1 },
+  { code: 'CL', name: 'Ligue des champions', group: 2 },
+  { code: 'ELC', name: 'Championship', group: 2 },
+  { code: 'DED', name: 'Eredivisie', group: 2 },
+  { code: 'PPL', name: 'Primeira Liga', group: 2 },
+  { code: 'BSA', name: 'Brasileirão', group: 2 },
 ];
+
+// Appelle football-data.org. Si la limite est atteinte (erreur 429), attend un peu et réessaie une fois.
+async function fdFetch(url, token) {
+  let r = await fetch(url, { headers: { 'X-Auth-Token': token } });
+  if (r.status === 429) {
+    await new Promise((ok) => setTimeout(ok, 8000));
+    r = await fetch(url, { headers: { 'X-Auth-Token': token } });
+  }
+  return r;
+}
 
 const K = 3;          // poids de la moyenne du championnat
 const HALF_LIFE = 90; // un match perd la moitié de son poids tous les 90 jours
@@ -85,9 +101,7 @@ function formOf(finDesc, id) {
 }
 
 async function processCompetition(c, token, from, to) {
-  const r = await fetch(`https://api.football-data.org/v4/competitions/${c.code}/matches`, {
-    headers: { 'X-Auth-Token': token },
-  });
+  const r = await fdFetch(`https://api.football-data.org/v4/competitions/${c.code}/matches`, token);
   if (!r.ok) throw new Error(`${c.code} : erreur ${r.status}`);
   const { matches = [] } = await r.json();
 
@@ -166,7 +180,7 @@ async function settle(url, key, finished) {
   return pending.length;
 }
 
-export async function runUpdate({ days = 4, only } = {}) {
+export async function runUpdate({ days = 4, only, group } = {}) {
   const token = process.env.FOOTBALL_DATA_TOKEN;
   const url = process.env.SUPABASE_URL;
   const key = process.env.SUPABASE_SERVICE_KEY;
@@ -174,7 +188,11 @@ export async function runUpdate({ days = 4, only } = {}) {
 
   const from = new Date();
   const to = new Date(from.getTime() + days * DAY);
-  const list = only ? COMPETITIONS.filter((c) => c.code === only) : COMPETITIONS;
+  const list = only
+    ? COMPETITIONS.filter((c) => c.code === only)
+    : group
+      ? COMPETITIONS.filter((c) => c.group === Number(group))
+      : COMPETITIONS;
 
   const results = await Promise.allSettled(list.map((c) => processCompetition(c, token, from, to)));
   const rows = [];
