@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Licences — Administration</title>
+<style>
+:root{--bg:#f1f5f4;--card:#fff;--ink:#16211f;--mut:#64748b;--line:#dbe4e1;--acc:#16a34a;--acc2:#fff;--red:#b91c1c}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1514;--card:#18211f;--ink:#e8f0ee;--mut:#9aaca8;--line:#2a3835;--acc:#34d399;--acc2:#06281f;--red:#fca5a5;color-scheme:dark}}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif}
+.w{max-width:560px;margin:0 auto;padding:14px}h1{font-size:21px;margin:6px 0 12px}h2{font-size:16px;margin:0 0 8px}
+.c{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:12px}
+label{display:block;font-size:13px;color:var(--mut);margin:9px 0 3px;font-weight:600}
+input,select{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:10px;padding:11px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;padding:9px 12px;font-weight:700}
+.p{background:var(--acc);color:var(--acc2);border-color:var(--acc);width:100%;margin-top:12px;padding:13px}
+.g{display:grid;grid-template-columns:1fr 1fr;gap:9px}.mut{color:var(--mut);font-size:13px}
+.code{font:800 22px/1.2 ui-monospace,Menlo,monospace;letter-spacing:1px;color:var(--acc)}
+.it{border-top:1px solid var(--line);padding:10px 0}.it:first-child{border-top:0}
+.row{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.row button{padding:6px 10px;font-size:13px}
+.er{background:#fee2e2;color:#991b1b;border-radius:10px;padding:10px;margin-top:10px;font-weight:700;font-size:14px}
+</style>
+</head>
+<body>
+<div class="w">
+<h1>🔑 Licences</h1>
+<div class="c">
+  <label>Mot de passe administrateur (ADMIN_TOKEN)</label>
+  <input id="tok" type="password" autocomplete="off">
+  <div id="err"></div>
+</div>
+
+<div class="c">
+  <h2>Créer une licence</h2>
+  <div class="g">
+    <div><label>Durée</label><select id="dur"><option value="7">7 jours</option><option value="30" selected>1 mois (30 jours)</option><option value="90">3 mois (90 jours)</option><option value="180">6 mois</option><option value="365">1 an</option><option value="x">Autre…</option></select></div>
+    <div><label>Nombre de codes</label><input id="cnt" type="number" min="1" max="50" value="1"></div>
+  </div>
+  <div id="xb" style="display:none"><label>Durée en jours</label><input id="xd" type="number" min="1" value="15"></div>
+  <label>Nom du client (pour vous)</label><input id="note" placeholder="Ex. Moussa — Orange Money">
+  <button class="p" id="mk">Créer le code</button>
+  <div id="out"></div>
+</div>
+
+<div class="c">
+  <h2>Licences <button id="rf" style="float:right;padding:4px 10px">↻</button></h2>
+  <div id="list" class="mut">Entrez le mot de passe puis appuyez sur ↻.</div>
+</div>
+</div>
+<script>
+(function(){
+var $=function(i){return document.getElementById(i)};
+$("tok").value=sessionStorage.getItem("adm")||"";
+function esc(s){return String(s==null?"":s).replace(/[&<>"]/g,function(c){return{"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]})}
+function call(o){
+  sessionStorage.setItem("adm",$("tok").value);
+  return fetch("/api/license-admin",{method:"POST",headers:{"content-type":"application/json","x-admin-token":$("tok").value},body:JSON.stringify(o)})
+    .then(function(r){return r.json().then(function(j){if(!r.ok)throw new Error(j.error||"Erreur");return j})})
+    .catch(function(e){$("err").innerHTML='<div class="er">'+esc(e.message==="Failed to fetch"?"Connexion impossible":e.message)+'</div>';throw e});
+}
+function D(x){return new Date(x).toLocaleDateString("fr-FR")}
+function st(x){
+  if(x.revoked)return["Désactivée","var(--red)"];
+  if(!x.activated_at)return["Non activée ("+x.days+" j)","var(--mut)"];
+  if(new Date(x.expires_at)<new Date())return["Expirée le "+D(x.expires_at),"#b45309"];
+  return["Active jusqu’au "+D(x.expires_at),"var(--acc)"];
+}
+$("dur").onchange=function(){$("xb").style.display=this.value==="x"?"block":"none"};
+$("mk").onclick=function(){
+  $("err").innerHTML="";
+  var d=$("dur").value==="x"?Number($("xd").value):Number($("dur").value);
+  call({action:"create",days:d,count:Number($("cnt").value)||1,note:$("note").value}).then(function(j){
+    $("out").innerHTML=j.codes.map(function(c){
+      var msg="Ton code d’activation : "+c.code+"\nValable "+c.days+" jours à partir de l’activation.\nOuvre l’application, entre le code puis appuie sur Activer.\n"+location.origin;
+      return '<div class="it"><div class="code">'+esc(c.code)+'</div><div class="mut">'+c.days+' jours · '+esc(c.note||"")+'</div><div class="row"><button data-cp="'+esc(c.code)+'">Copier</button><button data-wa="'+encodeURIComponent(msg)+'">WhatsApp</button></div></div>'}).join("");
+    load();
+  }).catch(function(){});
+};
+$("out").addEventListener("click",function(e){
+  var c=e.target.getAttribute("data-cp"),w=e.target.getAttribute("data-wa");
+  if(c){try{navigator.clipboard.writeText(c);e.target.textContent="Copié ✅"}catch(x){}}
+  if(w)window.open("https://wa.me/?text="+w,"_blank");
+});
+function load(){
+  $("err").innerHTML="";
+  call({action:"list"}).then(function(rows){
+    $("list").innerHTML=rows.length?rows.map(function(x){var s=st(x);
+      return '<div class="it"><b style="font-family:ui-monospace,Menlo,monospace">'+esc(x.code)+'</b> <span class="mut">'+esc(x.note||"")+'</span><div style="color:'+s[1]+';font-weight:700;font-size:14px">'+s[0]+'</div>'+
+      '<div class="row"><button data-x="'+x.id+'" data-d="30">+30 j</button><button data-x="'+x.id+'" data-d="365">+1 an</button>'+
+      (x.activated_at?'<button data-rs="'+x.id+'">Changer d’appareil</button>':'')+
+      '<button data-rv="'+x.id+'" data-v="'+(x.revoked?0:1)+'">'+(x.revoked?"Réactiver":"Désactiver")+'</button></div></div>'}).join(""):"Aucune licence.";
+  }).catch(function(){});
+}
+$("rf").onclick=load;
+$("list").addEventListener("click",function(e){
+  var t=e.target,id=t.getAttribute("data-x")||t.getAttribute("data-rs")||t.getAttribute("data-rv");if(!id)return;
+  var o;
+  if(t.getAttribute("data-x"))o={action:"extend",id:id,days:Number(t.getAttribute("data-d"))};
+  else if(t.getAttribute("data-rs")){if(!confirm("Autoriser ce code sur un nouvel appareil ? L’ancien appareil perdra l’accès."))return;o={action:"reset_device",id:id}}
+  else{if(t.getAttribute("data-v")==="1"&&!confirm("Désactiver cette licence ?"))return;o={action:"revoke",id:id,revoked:t.getAttribute("data-v")==="1"}}
+  call(o).then(load).catch(function(){});
+});
+if($("tok").value)load();
+})();
+</script>
+</body>
+</html>
