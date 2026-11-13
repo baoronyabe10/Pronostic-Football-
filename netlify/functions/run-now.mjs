@@ -7,7 +7,11 @@ export default async (req) => {
     return new Response('Non autorisé', { status: 401 });
   }
   try {
-    const res = await runUpdate({ only: url.searchParams.get('comp') || undefined });
+    // Ajoutez &group=1 ou &group=2 (un groupe à la fois), ou &comp=PL pour un seul championnat.
+    const res = await runUpdate({
+      only: url.searchParams.get('comp') || undefined,
+      group: url.searchParams.get('group') || undefined,
+    });
     return Response.json(res);
   } catch (e) {
     return Response.json({ error: e.message }, { status: 500 });
