@@ -20,18 +20,25 @@ async function getPronoFile() {
   }
   return { sha: null, content: [] };
 }
-
 async function savePronoFile(pronos, sha) {
-  const body = {
-    message: 'Nouveau prono via Telegram',
-    content: Buffer.from(JSON.stringify(pronos, null, 2)).toString('base64')
-  };
-  if (sha) body.sha = sha;
-  await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/pronos.json`, {
-    method: 'PUT',
-    headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
-    body: JSON.stringify(body)
-  });
+  const content = Buffer.from(JSON.stringify(pronos, null, 2)).toString('base64');
+  for (const path of ['pronos.json', 'public/pronos.json']) {
+    let fileSha = sha;
+    if (path === 'public/pronos.json') {
+      try {
+        const r = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`, { headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' } });
+        const j = await r.json();
+        if (j.sha) fileSha = j.sha;
+      } catch(e){}
+    }
+    const body = { message: 'Nouveau prono via Telegram', content };
+    if (fileSha) body.sha = fileSha;
+    await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/${path}`, {
+      method: 'PUT',
+      headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
+      body: JSON.stringify(body)
+    });
+  }
 }
 
 async function poll() {
