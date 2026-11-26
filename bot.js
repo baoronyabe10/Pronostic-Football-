@@ -1,29 +1,36 @@
+const http = require('http');
+http.createServer((req, res) => { res.end('Bot en ligne'); }).listen(process.env.PORT || 3000);
+
 const fetch = require('node-fetch');
 
 const BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 const GITHUB_TOKEN = process.env.GITHUB_TOKEN;
-const GITHUB_REPO = process.env.GITHUB_REPO; // baoronyabe10/Pronostic-Football-
+const GITHUB_REPO = process.env.GITHUB_REPO;
 
 let offset = 0;
 
 async function getPronoFile() {
-  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/pronos.json`, {
+  const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/pronos.json`, {
     headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' }
   });
   const data = await res.json();
-  return { sha: data.sha, content: JSON.parse(Buffer.from(data.content, 'base64').toString()) };
+  if (data.content) {
+    return { sha: data.sha, content: JSON.parse(Buffer.from(data.content, 'base64').toString()) };
+  }
+  return { sha: null, content: [] };
 }
 
 async function savePronoFile(pronos, sha) {
-  await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/public/pronos.json`, {
+  const body = {
+    message: 'Nouveau prono via Telegram',
+    content: Buffer.from(JSON.stringify(pronos, null, 2)).toString('base64')
+  };
+  if (sha) body.sha = sha;
+  await fetch(`https://api.github.com/repos/${GITHUB_REPO}/contents/pronos.json`, {
     method: 'PUT',
     headers: { Authorization: `token ${GITHUB_TOKEN}`, Accept: 'application/vnd.github.v3+json' },
-    body: JSON.stringify({
-      message: 'Nouveau prono via Telegram',
-      content: Buffer.from(JSON.stringify(pronos, null, 2)).toString('base64'),
-      sha
-    })
+    body: JSON.stringify(body)
   });
 }
 
@@ -38,18 +45,18 @@ async function poll() {
       if (String(msg.chat.id) !== String(CHAT_ID)) continue;
 
       const text = msg.text;
-      // On cherche un code genre H31UP, ou un lien 1xbet
       const match = text.match(/[A-Z0-9]{4,10}/);
       if (!match) continue;
 
       const { sha, content } = await getPronoFile();
-      content.unshift({ code: match[0], text: text, date: new Date().toISOString() });
-      await savePronoFile(content.slice(0, 20), sha);
-      console.log('Nouveau prono ajouté:', match[0]);
+      const list = Array.isArray(content) ? content : [];
+      list.unshift({ code: match[0], text: text, date: new Date().toISOString() });
+      await savePronoFile(list.slice(0, 20), sha);
+      console.log('Nouveau prono ajoute:', match[0]);
     }
   } catch (e) { console.log('Erreur:', e.message); }
   setTimeout(poll, 2000);
 }
 
-console.log('Bot démarré...');
+console.log('Bot demarre...');
 poll();
