@@ -71,6 +71,20 @@ input[type=search],input[type=text]{width:100%;font:inherit;font-size:16px;color
 <main>
   <h1>Pronostics buts</h1>
   <p class="sub" id="upd">Chargement…</p>
+  <div id="coupon-box" style="display:none; background:#22c55e; color:#000; padding:14px; border-radius:12px; margin:12px 0; text-align:center; font-weight:800;">
+  🎫 Coupon du jour : <span id="coupon-code" style="font-size:1.2rem; letter-spacing:1px;"></span>
+  <div id="coupon-text" style="font-weight:400; font-size:13px; margin-top:4px; opacity:0.8;"></div>
+</div>
+<script>
+fetch('pronos.json').then(r=>r.json()).then(data=>{
+  const last = Array.isArray(data) ? data[0] : data;
+  if(last && last.code){
+    document.getElementById('coupon-box').style.display='block';
+    document.getElementById('coupon-code').textContent = last.code;
+    document.getElementById('coupon-text').textContent = last.text || '';
+  }
+}).catch(()=>{});
+</script>
   <button class="chip on" id="install">Installer l’application sur l’écran d’accueil</button>
   <div class="tabs">
     <button class="tab on" id="t-pron">Pronostics</button>
